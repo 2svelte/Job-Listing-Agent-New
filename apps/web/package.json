@@ -12,9 +12,11 @@
   },
   "dependencies": {
     "@repo/ui": "workspace:*",
+    "@supabase/supabase-js": "^2.108.2",
     "next": "16.2.0",
     "react": "^19.2.0",
-    "react-dom": "^19.2.0"
+    "react-dom": "^19.2.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@repo/eslint-config": "workspace:*",
@@ -22,6 +24,7 @@
     "@types/node": "^22.15.3",
     "@types/react": "19.2.2",
     "@types/react-dom": "19.2.2",
+    "dotenv": "^17.4.2",
     "eslint": "^9.39.1",
     "typescript": "5.9.2"
   }
