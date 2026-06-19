@@ -1,13 +1,11 @@
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --background: #f4f4ef;
+  --foreground: #132224;
+  --surface: #fffdf8;
+  --surface-strong: #ffffff;
+  --accent: #00795f;
+  --accent-soft: #d5f3ea;
+  --border: #d9ddd4;
 }
 
 html,
@@ -18,7 +16,11 @@ body {
 
 body {
   color: var(--foreground);
-  background: var(--background);
+  background:
+    radial-gradient(circle at 8% 0%, #d9f3d6 0, transparent 45%),
+    radial-gradient(circle at 92% 100%, #d5e6ff 0, transparent 42%),
+    var(--background);
+  font-family: var(--font-geist-sans), "Segoe UI", sans-serif;
 }
 
 * {
@@ -32,19 +34,20 @@ a {
   text-decoration: none;
 }
 
-.imgDark {
-  display: none;
+button {
+  border: 1px solid var(--border);
+  background: var(--surface-strong);
+  color: var(--foreground);
+  border-radius: 0.75rem;
+  padding: 0.65rem 1rem;
+  font-weight: 600;
+  cursor: pointer;
 }
 
-@media (prefers-color-scheme: dark) {
-  html {
-    color-scheme: dark;
-  }
+button:hover {
+  border-color: #a8b1a5;
+}
 
-  .imgLight {
-    display: none;
-  }
-  .imgDark {
-    display: unset;
-  }
+input {
+  font: inherit;
 }

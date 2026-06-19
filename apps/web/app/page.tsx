@@ -1,29 +1,41 @@
+import Link from "next/link";
+import styles from "./page.module.css";
+
 export default function Home() {
   return (
-    <main style={{ maxWidth: 900, margin: "0 auto", padding: "48px 24px" }}>
-      <h1 style={{ fontSize: "2rem", marginBottom: 8 }}>Job Listing Agent</h1>
-      <p style={{ marginBottom: 24, lineHeight: 1.6 }}>
-        Backend foundation is active. Next steps are Supabase migration apply, auth onboarding UI, and interaction tracking UI.
-      </p>
-
-      <section style={{ marginBottom: 24 }}>
-        <h2 style={{ fontSize: "1.25rem", marginBottom: 10 }}>Implemented API Routes</h2>
-        <ul style={{ paddingLeft: 20, lineHeight: 1.8 }}>
-          <li>GET /api/jobs</li>
-          <li>GET /api/user/preferences?userId=&lt;uuid&gt;</li>
-          <li>PUT /api/user/preferences?userId=&lt;uuid&gt;</li>
-          <li>GET /api/recommendations?userId=&lt;uuid&gt;</li>
-          <li>POST /api/admin/jobs/sync</li>
-        </ul>
+    <main className={styles.page}>
+      <section className={styles.hero}>
+        <p className={styles.eyebrow}>Smart Job Discovery</p>
+        <h1>Find jobs that get sharper with every click.</h1>
+        <p className={styles.description}>
+          Start with your preferences, then let Job Listing Agent learn from what you save, like, dislike, and apply to.
+        </p>
+        <div className={styles.actions}>
+          <Link className={styles.primary} href="/signup">
+            Create account
+          </Link>
+          <Link className={styles.secondary} href="/login">
+            Log in
+          </Link>
+          <Link className={styles.secondary} href="/app">
+            Open app
+          </Link>
+        </div>
       </section>
 
-      <section>
-        <h2 style={{ fontSize: "1.25rem", marginBottom: 10 }}>Setup Checklist</h2>
-        <ol style={{ paddingLeft: 20, lineHeight: 1.8 }}>
-          <li>Copy apps/web/.env.example to apps/web/.env.local and fill in Supabase keys.</li>
-          <li>Apply SQL migration in supabase/migrations/20260619_001_initial_job_listing_schema.sql.</li>
-          <li>Start the app and trigger POST /api/admin/jobs/sync to ingest initial jobs.</li>
-        </ol>
+      <section className={styles.grid}>
+        <article>
+          <h3>Set Preferences</h3>
+          <p>Pick titles, locations, salary range, and skills to seed your first recommendation feed.</p>
+        </article>
+        <article>
+          <h3>Train the Agent</h3>
+          <p>Every save, like, dislike, and applied signal improves ranking and match confidence.</p>
+        </article>
+        <article>
+          <h3>Discover Faster</h3>
+          <p>Use one dashboard to review recommendations and jump to source listings in one click.</p>
+        </article>
       </section>
     </main>
   );

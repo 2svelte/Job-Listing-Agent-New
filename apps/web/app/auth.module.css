@@ -1,0 +1,73 @@
+.page {
+  min-height: calc(100vh - 2rem);
+  display: grid;
+  place-items: center;
+  padding: 2rem 1rem;
+}
+
+.card {
+  width: min(100%, 520px);
+  border: 1px solid var(--border);
+  background: linear-gradient(135deg, #fbfff4, #fbfdff);
+  border-radius: 1.2rem;
+  padding: 1.5rem;
+  box-shadow: 0 12px 24px rgba(26, 42, 38, 0.09);
+}
+
+.kicker {
+  font-size: 0.8rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: #276457;
+  margin-bottom: 0.4rem;
+}
+
+.card h1 {
+  font-size: clamp(1.6rem, 4.6vw, 2.4rem);
+  line-height: 1.1;
+  margin-bottom: 0.6rem;
+}
+
+.subtext {
+  color: #3f4f4f;
+  margin-bottom: 1rem;
+}
+
+.form {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.form label {
+  display: grid;
+  gap: 0.4rem;
+  font-size: 0.95rem;
+}
+
+.form input {
+  border: 1px solid var(--border);
+  border-radius: 0.7rem;
+  padding: 0.65rem 0.75rem;
+  background: #fff;
+}
+
+.form button {
+  margin-top: 0.3rem;
+  background: var(--accent);
+  color: #f5fff8;
+  border-color: #006951;
+}
+
+.status {
+  margin-top: 0.85rem;
+  color: #2f4745;
+}
+
+.meta {
+  margin-top: 0.9rem;
+}
+
+.meta a {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
