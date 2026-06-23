@@ -20,14 +20,6 @@ type Recommendation = {
   job: Job;
 };
 
-type PreferencesResponse = {
-  preferences: {
-    preferred_titles: string[];
-    preferred_locations: string[];
-    preferred_tags: string[];
-  } | null;
-};
-
 const parseApiPayload = async <T extends object>(
   response: Response,
 ): Promise<Partial<T> & { error?: string }> => {
@@ -52,9 +44,9 @@ export default function AppHomePage() {
   const [loadingSession, setLoadingSession] = useState(true);
   const [status, setStatus] = useState("Loading session...");
 
-  const [titleInput, setTitleInput] = useState("Software Engineer, Backend Engineer");
-  const [locationInput, setLocationInput] = useState("Remote");
-  const [tagInput, setTagInput] = useState("TypeScript, Node.js, PostgreSQL");
+  const [titleInput, setTitleInput] = useState("");
+  const [locationInput, setLocationInput] = useState("");
+  const [tagInput, setTagInput] = useState("");
 
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [searchBusy, setSearchBusy] = useState(false);
@@ -77,34 +69,6 @@ export default function AppHomePage() {
 
     void init();
   }, [supabase]);
-
-  useEffect(() => {
-    if (!userId) {
-      return;
-    }
-
-    const loadExistingPreferences = async () => {
-      const response = await fetch(`/api/user/preferences?userId=${userId}`);
-      const payload = await parseApiPayload<PreferencesResponse>(response);
-      if (!response.ok || !payload.preferences) {
-        return;
-      }
-
-      if (payload.preferences.preferred_titles?.length) {
-        setTitleInput(payload.preferences.preferred_titles.join(", "));
-      }
-
-      if (payload.preferences.preferred_locations?.length) {
-        setLocationInput(payload.preferences.preferred_locations.join(", "));
-      }
-
-      if (payload.preferences.preferred_tags?.length) {
-        setTagInput(payload.preferences.preferred_tags.join(", "));
-      }
-    };
-
-    void loadExistingPreferences();
-  }, [userId]);
 
   const splitInput = (value: string) =>
     value
@@ -202,6 +166,7 @@ export default function AppHomePage() {
         pages: 2,
         what: titles || undefined,
         where: locations || undefined,
+        force: true,
       }),
     });
 
