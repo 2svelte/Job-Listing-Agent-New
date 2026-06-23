@@ -28,6 +28,30 @@ type PreferencesResponse = {
   } | null;
 };
 
+type SyncResponse = {
+  skipped?: boolean;
+  reason?: string;
+  nextSyncAt?: string;
+  syncedCount?: number;
+  fetchedCount?: number;
+  error?: string;
+};
+
+const parseApiPayload = async <T extends object>(
+  response: Response,
+): Promise<Partial<T> & { error?: string }> => {
+  const text = await response.text();
+  if (!text) {
+    return {};
+  }
+
+  try {
+    return JSON.parse(text) as Partial<T> & { error?: string };
+  } catch {
+    return { error: text.slice(0, 200) } as Partial<T> & { error?: string };
+  }
+};
+
 export default function AppHomePage() {
   const router = useRouter();
   const supabase = useMemo(() => getSupabaseBrowserClient(), []);
@@ -42,6 +66,19 @@ export default function AppHomePage() {
   const [tagInput, setTagInput] = useState("TypeScript, Node.js, PostgreSQL");
 
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
+  const [syncStatus, setSyncStatus] = useState("");
+  const [syncBusy, setSyncBusy] = useState(false);
+  const [syncPages, setSyncPages] = useState("1");
+  const [syncWhat, setSyncWhat] = useState("software engineer");
+  const [syncWhere, setSyncWhere] = useState("sydney");
+  const [syncSalaryMin, setSyncSalaryMin] = useState("90000");
+  const [syncExclude, setSyncExclude] = useState("");
+  const [syncAdminSecret, setSyncAdminSecret] = useState("");
+  const [syncPermanent, setSyncPermanent] = useState(true);
+  const [syncFullTime, setSyncFullTime] = useState(true);
+  const [canSeeSyncPanel, setCanSeeSyncPanel] = useState(false);
+
+  const syncPanelEnabled = process.env.NEXT_PUBLIC_ENABLE_SYNC_PANEL === "true";
 
   useEffect(() => {
     const init = async () => {
@@ -57,10 +94,34 @@ export default function AppHomePage() {
       setEmail(user.email ?? "");
       setLoadingSession(false);
       setStatus("Session loaded.");
+
+      if (!syncPanelEnabled) {
+        setCanSeeSyncPanel(false);
+        return;
+      }
+
+      const accessToken = data.session?.access_token;
+      const headers: HeadersInit = {};
+      if (accessToken) {
+        headers.Authorization = `Bearer ${accessToken}`;
+      }
+
+      const response = await fetch("/api/user/sync-access", {
+        method: "GET",
+        headers,
+      });
+
+      const payload = await parseApiPayload<{ canAccessSyncPanel?: boolean }>(response);
+      if (!response.ok) {
+        setCanSeeSyncPanel(false);
+        return;
+      }
+
+      setCanSeeSyncPanel(Boolean(payload.canAccessSyncPanel));
     };
 
     void init();
-  }, [supabase]);
+  }, [supabase, syncPanelEnabled]);
 
   useEffect(() => {
     if (!userId) {
@@ -69,7 +130,7 @@ export default function AppHomePage() {
 
     const loadExistingPreferences = async () => {
       const response = await fetch(`/api/user/preferences?userId=${userId}`);
-      const payload = (await response.json()) as PreferencesResponse;
+      const payload = await parseApiPayload<PreferencesResponse>(response);
       if (!response.ok || !payload.preferences) {
         return;
       }
@@ -103,10 +164,10 @@ export default function AppHomePage() {
 
     setStatus("Refreshing recommendations...");
     const response = await fetch(`/api/recommendations?userId=${userId}&limit=12`);
-    const payload = (await response.json()) as {
+    const payload = await parseApiPayload<{
       recommendations?: Recommendation[];
       error?: string;
-    };
+    }>(response);
 
     if (!response.ok) {
       setStatus(payload.error ?? "Unable to load recommendations.");
@@ -139,7 +200,7 @@ export default function AppHomePage() {
       }),
     });
 
-    const payload = (await response.json()) as { error?: string };
+    const payload = await parseApiPayload<{ error?: string }>(response);
     if (!response.ok) {
       setStatus(payload.error ?? "Failed to save preferences.");
       return;
@@ -165,13 +226,64 @@ export default function AppHomePage() {
       }),
     });
 
-    const payload = (await response.json()) as { error?: string };
+    const payload = await parseApiPayload<{ error?: string }>(response);
     if (!response.ok) {
       setStatus(payload.error ?? "Failed to save interaction.");
       return;
     }
 
     setStatus(`Recorded ${interactionType}.`);
+    await loadRecommendations();
+  };
+
+  const runSync = async () => {
+    setSyncBusy(true);
+    setSyncStatus("Starting Adzuna sync...");
+
+    const pagesNumber = Number(syncPages);
+    const salaryMinNumber = Number(syncSalaryMin);
+    const payload = {
+      pages: Number.isFinite(pagesNumber) && pagesNumber > 0 ? pagesNumber : 1,
+      what: syncWhat.trim() || undefined,
+      whatExclude: syncExclude.trim() || undefined,
+      where: syncWhere.trim() || undefined,
+      salaryMin:
+        Number.isFinite(salaryMinNumber) && salaryMinNumber > 0 ? salaryMinNumber : undefined,
+      fullTime: syncFullTime,
+      permanent: syncPermanent,
+    };
+
+    const headers: HeadersInit = {
+      "Content-Type": "application/json",
+    };
+
+    if (syncAdminSecret.trim()) {
+      headers["x-admin-secret"] = syncAdminSecret.trim();
+    }
+
+    const response = await fetch("/api/admin/jobs/sync", {
+      method: "POST",
+      headers,
+      body: JSON.stringify(payload),
+    });
+
+    const result = await parseApiPayload<SyncResponse>(response);
+    if (!response.ok) {
+      setSyncBusy(false);
+      setSyncStatus(result.error ?? "Sync failed.");
+      return;
+    }
+
+    if (result.skipped) {
+      setSyncBusy(false);
+      setSyncStatus(result.reason ?? "Sync skipped due to daily cache window.");
+      return;
+    }
+
+    setSyncStatus(
+      `Sync completed. Fetched ${result.fetchedCount ?? 0}, upserted ${result.syncedCount ?? 0}.`,
+    );
+    setSyncBusy(false);
     await loadRecommendations();
   };
 
@@ -237,8 +349,74 @@ export default function AppHomePage() {
         <button onClick={savePreferences}>Save and refresh recommendations</button>
       </section>
 
+      {canSeeSyncPanel ? (
+        <section className={styles.syncPanel}>
+          <h2>Adzuna Sync Controls</h2>
+          <p className={styles.syncHelp}>
+            Admin/dev panel for ingestion only. This is separate from user preference matching.
+          </p>
+          <div className={styles.syncGrid}>
+            <label>
+              Pages (1-5)
+              <input value={syncPages} onChange={(event) => setSyncPages(event.target.value)} />
+            </label>
+            <label>
+              What
+              <input value={syncWhat} onChange={(event) => setSyncWhat(event.target.value)} />
+            </label>
+            <label>
+              Where
+              <input value={syncWhere} onChange={(event) => setSyncWhere(event.target.value)} />
+            </label>
+            <label>
+              Exclude keyword
+              <input value={syncExclude} onChange={(event) => setSyncExclude(event.target.value)} />
+            </label>
+            <label>
+              Salary min
+              <input value={syncSalaryMin} onChange={(event) => setSyncSalaryMin(event.target.value)} />
+            </label>
+            <label>
+              Admin secret (optional)
+              <input
+                type="password"
+                value={syncAdminSecret}
+                onChange={(event) => setSyncAdminSecret(event.target.value)}
+              />
+            </label>
+          </div>
+
+          <div className={styles.syncToggles}>
+            <label>
+              <input
+                type="checkbox"
+                checked={syncFullTime}
+                onChange={(event) => setSyncFullTime(event.target.checked)}
+              />
+              Full-time only
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                checked={syncPermanent}
+                onChange={(event) => setSyncPermanent(event.target.checked)}
+              />
+              Permanent only
+            </label>
+          </div>
+
+          <button disabled={syncBusy} onClick={runSync}>
+            {syncBusy ? "Syncing..." : "Run Adzuna sync"}
+          </button>
+          <p className={styles.syncStatus}>{syncStatus}</p>
+        </section>
+      ) : null}
+
       <section className={styles.results}>
         <h2>Recommended Jobs</h2>
+        <p className={styles.attribution}>
+          Jobs by <a href="https://www.adzuna.com.au" target="_blank" rel="noreferrer">Adzuna</a>
+        </p>
         {recommendations.length === 0 ? (
           <p>No recommendations yet. Save preferences or trigger job sync.</p>
         ) : (
@@ -262,7 +440,7 @@ export default function AppHomePage() {
                   <button onClick={() => addInteraction(item.job.id, "disliked")}>Dislike</button>
                   <button onClick={() => addInteraction(item.job.id, "applied")}>Applied</button>
                   <a href={item.job.source_url} rel="noreferrer" target="_blank">
-                    Source
+                    Apply now
                   </a>
                 </div>
               </article>

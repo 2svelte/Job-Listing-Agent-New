@@ -83,49 +83,130 @@ alter table public.jobs enable row level security;
 alter table public.job_interactions enable row level security;
 alter table public.recommendations enable row level security;
 
-create policy "Users can read own profile"
-  on public.profiles
-  for select
-  using (auth.uid() = id);
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public' and tablename = 'profiles' and policyname = 'Users can read own profile'
+  ) then
+    create policy "Users can read own profile"
+      on public.profiles
+      for select
+      using (auth.uid() = id);
+  end if;
+end
+$$;
 
-create policy "Users can insert own profile"
-  on public.profiles
-  for insert
-  with check (auth.uid() = id);
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public' and tablename = 'profiles' and policyname = 'Users can insert own profile'
+  ) then
+    create policy "Users can insert own profile"
+      on public.profiles
+      for insert
+      with check (auth.uid() = id);
+  end if;
+end
+$$;
 
-create policy "Users can update own profile"
-  on public.profiles
-  for update
-  using (auth.uid() = id);
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public' and tablename = 'profiles' and policyname = 'Users can update own profile'
+  ) then
+    create policy "Users can update own profile"
+      on public.profiles
+      for update
+      using (auth.uid() = id);
+  end if;
+end
+$$;
 
-create policy "Users can read own preferences"
-  on public.job_preferences
-  for select
-  using (auth.uid() = user_id);
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public' and tablename = 'job_preferences' and policyname = 'Users can read own preferences'
+  ) then
+    create policy "Users can read own preferences"
+      on public.job_preferences
+      for select
+      using (auth.uid() = user_id);
+  end if;
+end
+$$;
 
-create policy "Users can upsert own preferences"
-  on public.job_preferences
-  for all
-  using (auth.uid() = user_id)
-  with check (auth.uid() = user_id);
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public' and tablename = 'job_preferences' and policyname = 'Users can upsert own preferences'
+  ) then
+    create policy "Users can upsert own preferences"
+      on public.job_preferences
+      for all
+      using (auth.uid() = user_id)
+      with check (auth.uid() = user_id);
+  end if;
+end
+$$;
 
-create policy "Authenticated users can read jobs"
-  on public.jobs
-  for select
-  using (auth.role() = 'authenticated');
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public' and tablename = 'jobs' and policyname = 'Authenticated users can read jobs'
+  ) then
+    create policy "Authenticated users can read jobs"
+      on public.jobs
+      for select
+      using (auth.role() = 'authenticated');
+  end if;
+end
+$$;
 
-create policy "Users can read own interactions"
-  on public.job_interactions
-  for select
-  using (auth.uid() = user_id);
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public' and tablename = 'job_interactions' and policyname = 'Users can read own interactions'
+  ) then
+    create policy "Users can read own interactions"
+      on public.job_interactions
+      for select
+      using (auth.uid() = user_id);
+  end if;
+end
+$$;
 
-create policy "Users can write own interactions"
-  on public.job_interactions
-  for all
-  using (auth.uid() = user_id)
-  with check (auth.uid() = user_id);
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public' and tablename = 'job_interactions' and policyname = 'Users can write own interactions'
+  ) then
+    create policy "Users can write own interactions"
+      on public.job_interactions
+      for all
+      using (auth.uid() = user_id)
+      with check (auth.uid() = user_id);
+  end if;
+end
+$$;
 
-create policy "Users can read own recommendations"
-  on public.recommendations
-  for select
-  using (auth.uid() = user_id);
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public' and tablename = 'recommendations' and policyname = 'Users can read own recommendations'
+  ) then
+    create policy "Users can read own recommendations"
+      on public.recommendations
+      for select
+      using (auth.uid() = user_id);
+  end if;
+end
+$$;
