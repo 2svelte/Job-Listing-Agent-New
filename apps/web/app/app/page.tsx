@@ -71,6 +71,18 @@ export default function AppHomePage() {
 
       setUserId(user.id);
       setEmail(user.email ?? "");
+
+      // Ensure profile exists before using preferences
+      if (user.id && user.email) {
+        await fetch("/api/user/profile/bootstrap", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId: user.id, email: user.email }),
+        }).catch(() => {
+          // Silently fail if bootstrap fails - profile might already exist
+        });
+      }
+
       setLoadingSession(false);
       setStatus("Session loaded.");
     };
