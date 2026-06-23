@@ -28,15 +28,6 @@ type PreferencesResponse = {
   } | null;
 };
 
-type SyncResponse = {
-  skipped?: boolean;
-  reason?: string;
-  nextSyncAt?: string;
-  syncedCount?: number;
-  fetchedCount?: number;
-  error?: string;
-};
-
 const parseApiPayload = async <T extends object>(
   response: Response,
 ): Promise<Partial<T> & { error?: string }> => {
@@ -66,19 +57,7 @@ export default function AppHomePage() {
   const [tagInput, setTagInput] = useState("TypeScript, Node.js, PostgreSQL");
 
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
-  const [syncStatus, setSyncStatus] = useState("");
-  const [syncBusy, setSyncBusy] = useState(false);
-  const [syncPages, setSyncPages] = useState("1");
-  const [syncWhat, setSyncWhat] = useState("software engineer");
-  const [syncWhere, setSyncWhere] = useState("sydney");
-  const [syncSalaryMin, setSyncSalaryMin] = useState("90000");
-  const [syncExclude, setSyncExclude] = useState("");
-  const [syncAdminSecret, setSyncAdminSecret] = useState("");
-  const [syncPermanent, setSyncPermanent] = useState(true);
-  const [syncFullTime, setSyncFullTime] = useState(true);
-  const [canSeeSyncPanel, setCanSeeSyncPanel] = useState(false);
-
-  const syncPanelEnabled = process.env.NEXT_PUBLIC_ENABLE_SYNC_PANEL === "true";
+  const [searchBusy, setSearchBusy] = useState(false);
 
   useEffect(() => {
     const init = async () => {
@@ -94,34 +73,10 @@ export default function AppHomePage() {
       setEmail(user.email ?? "");
       setLoadingSession(false);
       setStatus("Session loaded.");
-
-      if (!syncPanelEnabled) {
-        setCanSeeSyncPanel(false);
-        return;
-      }
-
-      const accessToken = data.session?.access_token;
-      const headers: HeadersInit = {};
-      if (accessToken) {
-        headers.Authorization = `Bearer ${accessToken}`;
-      }
-
-      const response = await fetch("/api/user/sync-access", {
-        method: "GET",
-        headers,
-      });
-
-      const payload = await parseApiPayload<{ canAccessSyncPanel?: boolean }>(response);
-      if (!response.ok) {
-        setCanSeeSyncPanel(false);
-        return;
-      }
-
-      setCanSeeSyncPanel(Boolean(payload.canAccessSyncPanel));
     };
 
     void init();
-  }, [supabase, syncPanelEnabled]);
+  }, [supabase]);
 
   useEffect(() => {
     if (!userId) {
@@ -178,38 +133,6 @@ export default function AppHomePage() {
     setStatus(`Loaded ${payload.recommendations?.length ?? 0} recommendation(s).`);
   };
 
-  const savePreferences = async () => {
-    if (!userId) {
-      return;
-    }
-
-    setStatus("Saving preferences...");
-    const response = await fetch(`/api/user/preferences?userId=${userId}`, {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        preferredTitles: splitInput(titleInput),
-        preferredJobTypes: ["Full-time"],
-        preferredLocations: splitInput(locationInput),
-        preferredRemoteTypes: ["remote", "hybrid", "onsite"],
-        minSalary: 80000,
-        maxSalary: 300000,
-        preferredTags: splitInput(tagInput),
-      }),
-    });
-
-    const payload = await parseApiPayload<{ error?: string }>(response);
-    if (!response.ok) {
-      setStatus(payload.error ?? "Failed to save preferences.");
-      return;
-    }
-
-    setStatus("Preferences saved.");
-    await loadRecommendations();
-  };
-
   const addInteraction = async (jobId: string, interactionType: "saved" | "liked" | "disliked" | "applied") => {
     if (!userId) {
       return;
@@ -236,54 +159,74 @@ export default function AppHomePage() {
     await loadRecommendations();
   };
 
-  const runSync = async () => {
-    setSyncBusy(true);
-    setSyncStatus("Starting Adzuna sync...");
+  const searchJobs = async () => {
+    setSearchBusy(true);
+    setStatus("Saving preferences and searching for jobs...");
 
-    const pagesNumber = Number(syncPages);
-    const salaryMinNumber = Number(syncSalaryMin);
-    const payload = {
-      pages: Number.isFinite(pagesNumber) && pagesNumber > 0 ? pagesNumber : 1,
-      what: syncWhat.trim() || undefined,
-      whatExclude: syncExclude.trim() || undefined,
-      where: syncWhere.trim() || undefined,
-      salaryMin:
-        Number.isFinite(salaryMinNumber) && salaryMinNumber > 0 ? salaryMinNumber : undefined,
-      fullTime: syncFullTime,
-      permanent: syncPermanent,
-    };
-
-    const headers: HeadersInit = {
-      "Content-Type": "application/json",
-    };
-
-    if (syncAdminSecret.trim()) {
-      headers["x-admin-secret"] = syncAdminSecret.trim();
-    }
-
-    const response = await fetch("/api/admin/jobs/sync", {
+    // First, save preferences
+    const response = await fetch("/api/user/preferences", {
       method: "POST",
-      headers,
-      body: JSON.stringify(payload),
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        preferredTitles: splitInput(titleInput),
+        preferredJobTypes: ["Full-time"],
+        preferredLocations: splitInput(locationInput),
+        preferredRemoteTypes: ["remote", "hybrid", "onsite"],
+        minSalary: 80000,
+        maxSalary: 300000,
+        preferredTags: splitInput(tagInput),
+      }),
     });
 
-    const result = await parseApiPayload<SyncResponse>(response);
+    const prefPayload = await parseApiPayload<{ error?: string }>(response);
     if (!response.ok) {
-      setSyncBusy(false);
-      setSyncStatus(result.error ?? "Sync failed.");
+      setSearchBusy(false);
+      setStatus(prefPayload.error ?? "Failed to save preferences.");
       return;
     }
 
-    if (result.skipped) {
-      setSyncBusy(false);
-      setSyncStatus(result.reason ?? "Sync skipped due to daily cache window.");
+    // Then, search for jobs matching the preferences
+    setStatus("Searching for jobs...");
+
+    const titles = splitInput(titleInput).join(", ");
+    const locations = splitInput(locationInput).join(", ");
+
+    const syncResponse = await fetch("/api/admin/jobs/sync", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        pages: 2,
+        what: titles || undefined,
+        where: locations || undefined,
+      }),
+    });
+
+    type SyncResult = {
+      skipped?: boolean;
+      reason?: string;
+      syncedCount?: number;
+      fetchedCount?: number;
+      error?: string;
+    };
+
+    const syncResult = await parseApiPayload<SyncResult>(syncResponse);
+    if (!syncResponse.ok) {
+      setSearchBusy(false);
+      setStatus(syncResult.error ?? "Failed to search for jobs.");
       return;
     }
 
-    setSyncStatus(
-      `Sync completed. Fetched ${result.fetchedCount ?? 0}, upserted ${result.syncedCount ?? 0}.`,
-    );
-    setSyncBusy(false);
+    if (syncResult.skipped) {
+      setStatus(syncResult.reason ?? "Search skipped.");
+    } else {
+      setStatus(`Found ${syncResult.fetchedCount ?? 0} jobs.`);
+    }
+
+    setSearchBusy(false);
     await loadRecommendations();
   };
 
@@ -346,71 +289,10 @@ export default function AppHomePage() {
             <input value={tagInput} onChange={(event) => setTagInput(event.target.value)} />
           </label>
         </div>
-        <button onClick={savePreferences}>Save and refresh recommendations</button>
+        <button disabled={searchBusy} onClick={searchJobs}>
+          {searchBusy ? "Searching..." : "Search Jobs"}
+        </button>
       </section>
-
-      {canSeeSyncPanel ? (
-        <section className={styles.syncPanel}>
-          <h2>Adzuna Sync Controls</h2>
-          <p className={styles.syncHelp}>
-            Admin/dev panel for ingestion only. This is separate from user preference matching.
-          </p>
-          <div className={styles.syncGrid}>
-            <label>
-              Pages (1-5)
-              <input value={syncPages} onChange={(event) => setSyncPages(event.target.value)} />
-            </label>
-            <label>
-              What
-              <input value={syncWhat} onChange={(event) => setSyncWhat(event.target.value)} />
-            </label>
-            <label>
-              Where
-              <input value={syncWhere} onChange={(event) => setSyncWhere(event.target.value)} />
-            </label>
-            <label>
-              Exclude keyword
-              <input value={syncExclude} onChange={(event) => setSyncExclude(event.target.value)} />
-            </label>
-            <label>
-              Salary min
-              <input value={syncSalaryMin} onChange={(event) => setSyncSalaryMin(event.target.value)} />
-            </label>
-            <label>
-              Admin secret (optional)
-              <input
-                type="password"
-                value={syncAdminSecret}
-                onChange={(event) => setSyncAdminSecret(event.target.value)}
-              />
-            </label>
-          </div>
-
-          <div className={styles.syncToggles}>
-            <label>
-              <input
-                type="checkbox"
-                checked={syncFullTime}
-                onChange={(event) => setSyncFullTime(event.target.checked)}
-              />
-              Full-time only
-            </label>
-            <label>
-              <input
-                type="checkbox"
-                checked={syncPermanent}
-                onChange={(event) => setSyncPermanent(event.target.checked)}
-              />
-              Permanent only
-            </label>
-          </div>
-
-          <button disabled={syncBusy} onClick={runSync}>
-            {syncBusy ? "Syncing..." : "Run Adzuna sync"}
-          </button>
-          <p className={styles.syncStatus}>{syncStatus}</p>
-        </section>
-      ) : null}
 
       <section className={styles.results}>
         <h2>Recommended Jobs</h2>

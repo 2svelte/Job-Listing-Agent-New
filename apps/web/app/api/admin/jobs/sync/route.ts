@@ -76,13 +76,6 @@ const buildTags = (job: AdzunaJob) => {
 };
 
 export async function POST(request: NextRequest) {
-  if (serverEnv.SYNC_ADMIN_SECRET) {
-    const secret = request.headers.get("x-admin-secret");
-    if (secret !== serverEnv.SYNC_ADMIN_SECRET) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-  }
-
   if (!serverEnv.ADZUNA_APP_ID || !serverEnv.ADZUNA_APP_KEY) {
     return NextResponse.json(
       {
