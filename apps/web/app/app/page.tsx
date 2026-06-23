@@ -164,8 +164,8 @@ export default function AppHomePage() {
     setStatus("Saving preferences and searching for jobs...");
 
     // First, save preferences
-    const response = await fetch("/api/user/preferences", {
-      method: "POST",
+    const response = await fetch(`/api/user/preferences?userId=${userId}`, {
+      method: "PUT",
       headers: {
         "Content-Type": "application/json",
       },
