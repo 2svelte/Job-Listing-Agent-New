@@ -20,6 +20,14 @@ type Recommendation = {
   job: Job;
 };
 
+type LiveSearchJob = {
+  id: string;
+  title: string;
+  company_name: string;
+  location: string | null;
+  source_url: string;
+};
+
 const parseApiPayload = async <T extends object>(
   response: Response,
 ): Promise<Partial<T> & { error?: string }> => {
@@ -75,6 +83,9 @@ export default function AppHomePage() {
       .split(",")
       .map((item) => item.trim())
       .filter(Boolean);
+
+  const isUuid = (value: string) =>
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 
   const loadRecommendations = async () => {
     if (!userId) {
@@ -151,13 +162,13 @@ export default function AppHomePage() {
       return;
     }
 
-    // Then, search for jobs matching the preferences
-    setStatus("Searching for jobs...");
+    // Then, fetch live jobs from Adzuna without bulk DB upsert
+    setStatus("Searching live jobs...");
 
     const titles = splitInput(titleInput).join(", ");
     const locations = splitInput(locationInput).join(", ");
 
-    const syncResponse = await fetch("/api/admin/jobs/sync", {
+    const syncResponse = await fetch("/api/jobs/live-search", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -166,15 +177,12 @@ export default function AppHomePage() {
         pages: 2,
         what: titles || undefined,
         where: locations || undefined,
-        force: true,
       }),
     });
 
     type SyncResult = {
-      skipped?: boolean;
-      reason?: string;
-      syncedCount?: number;
       fetchedCount?: number;
+      jobs?: LiveSearchJob[];
       error?: string;
     };
 
@@ -185,14 +193,22 @@ export default function AppHomePage() {
       return;
     }
 
-    if (syncResult.skipped) {
-      setStatus(syncResult.reason ?? "Search skipped.");
-    } else {
-      setStatus(`Found ${syncResult.fetchedCount ?? 0} jobs.`);
-    }
+    const liveRecommendations: Recommendation[] = (syncResult.jobs ?? []).map((job) => ({
+      score: 0.5,
+      reasons: ["Live result from your current search"],
+      job: {
+        id: job.id,
+        title: job.title,
+        company_name: job.company_name,
+        location: job.location,
+        source_url: job.source_url,
+      },
+    }));
+
+    setRecommendations(liveRecommendations);
+    setStatus(`Found ${syncResult.fetchedCount ?? 0} live jobs.`);
 
     setSearchBusy(false);
-    await loadRecommendations();
   };
 
   const signOut = async () => {
@@ -282,10 +298,10 @@ export default function AppHomePage() {
                   ))}
                 </ul>
                 <div className={styles.cardActions}>
-                  <button onClick={() => addInteraction(item.job.id, "saved")}>Save</button>
-                  <button onClick={() => addInteraction(item.job.id, "liked")}>Like</button>
-                  <button onClick={() => addInteraction(item.job.id, "disliked")}>Dislike</button>
-                  <button onClick={() => addInteraction(item.job.id, "applied")}>Applied</button>
+                  <button disabled={!isUuid(item.job.id)} onClick={() => addInteraction(item.job.id, "saved")}>Save</button>
+                  <button disabled={!isUuid(item.job.id)} onClick={() => addInteraction(item.job.id, "liked")}>Like</button>
+                  <button disabled={!isUuid(item.job.id)} onClick={() => addInteraction(item.job.id, "disliked")}>Dislike</button>
+                  <button disabled={!isUuid(item.job.id)} onClick={() => addInteraction(item.job.id, "applied")}>Applied</button>
                   <a href={item.job.source_url} rel="noreferrer" target="_blank">
                     Apply now
                   </a>
