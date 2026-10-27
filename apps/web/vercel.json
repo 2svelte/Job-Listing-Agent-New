@@ -1,7 +1,6 @@
 {
   "crons": [
     { "path": "/api/admin/ats/sync", "schedule": "0 */6 * * *" },
-    { "path": "/api/admin/jobs/sync", "schedule": "30 */6 * * *" },
-    { "path": "/api/admin/serp/sync", "schedule": "0 17 * * *" }
+    { "path": "/api/admin/jobs/sync", "schedule": "30 */6 * * *" }
   ]
 }
