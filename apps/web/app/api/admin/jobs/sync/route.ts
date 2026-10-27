@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { serverEnv } from "@/lib/server-env";
-import { parseAtsUrl } from "@/lib/ats";
 import { isAdminRequest } from "@/lib/admin-auth";
 
 export const maxDuration = 300;
@@ -279,24 +278,6 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       throw new Error(error.message);
-    }
-
-    const discovered = new Map<string, { name: string; ats_provider: string; board_token: string }>();
-    for (const job of adzunaJobs) {
-      const ats = parseAtsUrl(job.redirect_url);
-      if (ats) {
-        discovered.set(`${ats.provider}:${ats.token}`, {
-          name: job.company?.display_name ?? ats.token,
-          ats_provider: ats.provider,
-          board_token: ats.token,
-        });
-      }
-    }
-
-    if (discovered.size) {
-      await supabase
-        .from("tracked_companies")
-        .upsert(Array.from(discovered.values()), { onConflict: "ats_provider,board_token", ignoreDuplicates: true });
     }
 
     await supabase
