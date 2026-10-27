@@ -3,7 +3,7 @@ import { z } from "zod";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { serverEnv } from "@/lib/server-env";
 import { isAdminRequest } from "@/lib/admin-auth";
-import { runAiVisaReview, visaColumnsFromRules } from "@/lib/visa";
+import { runAiVisaReview, runFullTextReview, visaColumnsFromRules } from "@/lib/visa";
 
 export const maxDuration = 300;
 
@@ -255,27 +255,29 @@ export async function POST(request: NextRequest) {
       };
     });
 
-    // Keep earlier AI verdicts so a re-sync doesn't fall back to the rules result.
-    const aiVerdicts = new Map<string, string>();
+    // Keep earlier verdicts (AI, or rules run on the full page) so a re-sync doesn't fall back to the snippet result.
+    const keptVerdicts = new Map<string, { visa_requirement: string; visa_needs_review: boolean; visa_classified_by: string }>();
     const sourceIds = mappedJobs.map((job) => job.source_job_id);
     for (let i = 0; i < sourceIds.length; i += 100) {
       const { data: existing } = await supabase
         .from("jobs")
-        .select("source_job_id,visa_requirement")
+        .select("source_job_id,visa_requirement,visa_needs_review,visa_classified_by")
         .eq("source", ADZUNA_SOURCE)
-        .eq("visa_classified_by", "ai")
+        .or("visa_classified_by.eq.ai,full_text_status.eq.fetched")
         .in("source_job_id", sourceIds.slice(i, i + 100));
       for (const row of existing ?? []) {
-        aiVerdicts.set(String(row.source_job_id), String(row.visa_requirement));
+        keptVerdicts.set(String(row.source_job_id), {
+          visa_requirement: String(row.visa_requirement),
+          visa_needs_review: Boolean(row.visa_needs_review),
+          visa_classified_by: String(row.visa_classified_by ?? "rules"),
+        });
       }
     }
 
     for (const job of mappedJobs) {
-      const verdict = aiVerdicts.get(job.source_job_id);
-      if (verdict) {
-        job.visa_requirement = verdict as typeof job.visa_requirement;
-        job.visa_needs_review = false;
-        (job as { visa_classified_by: string }).visa_classified_by = "ai";
+      const kept = keptVerdicts.get(job.source_job_id);
+      if (kept) {
+        Object.assign(job, kept);
       }
     }
 
@@ -306,6 +308,13 @@ export async function POST(request: NextRequest) {
       throw new Error(error.message);
     }
 
+    let fullText = { fetched: 0, failed: 0, restricted: 0, open: 0 };
+    try {
+      fullText = await runFullTextReview(serverEnv.FULL_TEXT_FETCH_PER_SYNC);
+    } catch {
+      // Page fetching is best-effort; unchecked jobs are retried on the next sync.
+    }
+
     let aiReview = { reviewed: 0, failed: 0 };
     try {
       aiReview = await runAiVisaReview(serverEnv.AI_REVIEW_PER_SYNC);
@@ -328,6 +337,7 @@ export async function POST(request: NextRequest) {
       fetchedCount: mappedJobs.length,
       source: ADZUNA_SOURCE,
       visaAiReview: aiReview,
+      visaFullText: fullText,
       jobs: data ?? [],
     });
   } catch (error) {

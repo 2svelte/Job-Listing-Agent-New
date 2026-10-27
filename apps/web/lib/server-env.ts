@@ -14,6 +14,7 @@ const serverEnvSchema = z.object({
     .default("https://api.openai.com/v1")
     .transform((value) => value.replace(/\/+$/, "")),
   AI_REVIEW_PER_SYNC: z.coerce.number().int().min(0).max(200).optional().default(25),
+  FULL_TEXT_FETCH_PER_SYNC: z.coerce.number().int().min(0).max(200).optional().default(40),
   ADZUNA_APP_ID: z
     .string()
     .optional()
@@ -45,6 +46,7 @@ export const serverEnv = serverEnvSchema.parse({
   AI_MODEL: process.env.AI_MODEL || undefined,
   AI_BASE_URL: process.env.AI_BASE_URL || undefined,
   AI_REVIEW_PER_SYNC: process.env.AI_REVIEW_PER_SYNC || undefined,
+  FULL_TEXT_FETCH_PER_SYNC: process.env.FULL_TEXT_FETCH_PER_SYNC || undefined,
   ADZUNA_APP_ID: process.env.ADZUNA_APP_ID,
   ADZUNA_APP_KEY: process.env.ADZUNA_APP_KEY,
   ADZUNA_COUNTRY: process.env.ADZUNA_COUNTRY,

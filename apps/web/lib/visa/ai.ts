@@ -21,7 +21,12 @@ export const classifyVisaWithAi = async (
     throw new Error("AI is not configured. Set AI_API_KEY in apps/web/.env.local");
   }
 
-  const text = description.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").slice(0, MAX_TEXT_CHARS);
+  const clean = description.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+  // Requirements often sit at the end of a long post, so keep both the start and the end.
+  const text =
+    clean.length > MAX_TEXT_CHARS
+      ? `${clean.slice(0, 2000)} [...] ${clean.slice(-(MAX_TEXT_CHARS - 2000))}`
+      : clean;
 
   const response = await fetch(`${serverEnv.AI_BASE_URL}/chat/completions`, {
     method: "POST",

@@ -119,7 +119,7 @@ export default function AppHomePage() {
     setStatus(`Loaded ${payload.recommendations?.length ?? 0} recommendation(s).`);
   };
 
-  const addInteraction = async (jobId: string, interactionType: "saved" | "liked" | "disliked" | "applied") => {
+  const addInteraction = async (jobId: string, interactionType: "saved" | "liked" | "disliked") => {
     if (!userId) {
       return;
     }
@@ -323,7 +323,6 @@ export default function AppHomePage() {
                   <button disabled={!isUuid(item.job.id)} onClick={() => addInteraction(item.job.id, "saved")}>Save</button>
                   <button disabled={!isUuid(item.job.id)} onClick={() => addInteraction(item.job.id, "liked")}>Like</button>
                   <button disabled={!isUuid(item.job.id)} onClick={() => addInteraction(item.job.id, "disliked")}>Dislike</button>
-                  <button disabled={!isUuid(item.job.id)} onClick={() => addInteraction(item.job.id, "applied")}>Applied</button>
                   <a href={item.job.source_url} rel="noreferrer" target="_blank">
                     Apply now
                   </a>

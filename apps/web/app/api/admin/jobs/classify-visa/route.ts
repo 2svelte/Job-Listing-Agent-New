@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { isAdminRequest } from "@/lib/admin-auth";
-import { runAiVisaReview, visaColumnsFromRules } from "@/lib/visa";
+import { runAiVisaReview, runFullTextReview, visaColumnsFromRules } from "@/lib/visa";
 
 export const maxDuration = 300;
 
@@ -11,6 +11,7 @@ const MAX_BATCHES = 20;
 
 const bodySchema = z.object({
   aiLimit: z.number().int().min(0).max(500).optional().default(50),
+  fetchLimit: z.number().int().min(0).max(300).optional().default(100),
 });
 
 // Classifies jobs that have never been checked (e.g. synced before this feature existed),
@@ -66,8 +67,10 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  let fullText = { fetched: 0, failed: 0, restricted: 0, open: 0 };
   let aiReview = { reviewed: 0, failed: 0 };
   try {
+    fullText = await runFullTextReview(parsed.data.fetchLimit);
     aiReview = await runAiVisaReview(parsed.data.aiLimit);
   } catch (error) {
     return NextResponse.json(
@@ -76,5 +79,5 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  return NextResponse.json({ classifiedByRules: counts, aiReview });
+  return NextResponse.json({ classifiedByRules: counts, fullText, aiReview });
 }
