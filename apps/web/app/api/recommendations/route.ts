@@ -20,20 +20,30 @@ export async function GET(request: NextRequest) {
   const { userId, limit } = parsed.data;
   const supabase = getSupabaseAdminClient();
 
-  const [preferencesResult, interactionsResult, jobsResult] = await Promise.all([
-    supabase.from("job_preferences").select("*").eq("user_id", userId).maybeSingle(),
+  const preferencesResult = await supabase.from("job_preferences").select("*").eq("user_id", userId).maybeSingle();
+  const excludeRestricted = Boolean(
+    (preferencesResult.data as { exclude_visa_restricted?: boolean } | null)?.exclude_visa_restricted,
+  );
+
+  let jobsQuery = supabase
+    .from("jobs")
+    .select("id,title,location,remote_type,employment_type,salary_min,salary_max,is_active,tags,posted_at")
+    .eq("is_active", true)
+    .order("posted_at", { ascending: false })
+    .limit(400);
+
+  if (excludeRestricted) {
+    jobsQuery = jobsQuery.neq("visa_requirement", "restricted");
+  }
+
+  const [interactionsResult, jobsResult] = await Promise.all([
     supabase
       .from("job_interactions")
       .select("job_id,interaction_type,created_at")
       .eq("user_id", userId)
       .order("created_at", { ascending: false })
       .limit(200),
-    supabase
-      .from("jobs")
-      .select("id,title,location,remote_type,employment_type,salary_min,salary_max,is_active,tags,posted_at")
-      .eq("is_active", true)
-      .order("posted_at", { ascending: false })
-      .limit(400),
+    jobsQuery,
   ]);
 
   if (preferencesResult.error) {
@@ -61,7 +71,7 @@ export async function GET(request: NextRequest) {
 
   const { data: jobsById, error: jobsByIdError } = await supabase
     .from("jobs")
-    .select("id,title,company_name,location,remote_type,employment_type,salary_min,salary_max,currency,source,source_url,tags,posted_at")
+    .select("id,title,company_name,location,remote_type,employment_type,salary_min,salary_max,currency,source,source_url,tags,posted_at,visa_requirement")
     .in("id", jobIds);
 
   if (jobsByIdError) {

@@ -9,7 +9,11 @@
     "ADZUNA_APP_KEY",
     "ADZUNA_COUNTRY",
     "ADZUNA_RESULTS_PER_PAGE",
-    "CRON_SECRET"
+    "CRON_SECRET",
+    "AI_API_KEY",
+    "AI_MODEL",
+    "AI_BASE_URL",
+    "AI_REVIEW_PER_SYNC"
   ],
   "tasks": {
     "build": {

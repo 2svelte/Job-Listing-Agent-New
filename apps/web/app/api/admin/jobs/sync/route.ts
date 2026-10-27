@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { serverEnv } from "@/lib/server-env";
 import { isAdminRequest } from "@/lib/admin-auth";
+import { runAiVisaReview, visaColumnsFromRules } from "@/lib/visa";
 
 export const maxDuration = 300;
 
@@ -250,8 +251,33 @@ export async function POST(request: NextRequest) {
         posted_at: job.created ?? null,
         last_synced_at: new Date().toISOString(),
         is_active: true,
+        ...visaColumnsFromRules(title, description),
       };
     });
+
+    // Keep earlier AI verdicts so a re-sync doesn't fall back to the rules result.
+    const aiVerdicts = new Map<string, string>();
+    const sourceIds = mappedJobs.map((job) => job.source_job_id);
+    for (let i = 0; i < sourceIds.length; i += 100) {
+      const { data: existing } = await supabase
+        .from("jobs")
+        .select("source_job_id,visa_requirement")
+        .eq("source", ADZUNA_SOURCE)
+        .eq("visa_classified_by", "ai")
+        .in("source_job_id", sourceIds.slice(i, i + 100));
+      for (const row of existing ?? []) {
+        aiVerdicts.set(String(row.source_job_id), String(row.visa_requirement));
+      }
+    }
+
+    for (const job of mappedJobs) {
+      const verdict = aiVerdicts.get(job.source_job_id);
+      if (verdict) {
+        job.visa_requirement = verdict as typeof job.visa_requirement;
+        job.visa_needs_review = false;
+        (job as { visa_classified_by: string }).visa_classified_by = "ai";
+      }
+    }
 
     if (!mappedJobs.length) {
       await supabase
@@ -280,6 +306,13 @@ export async function POST(request: NextRequest) {
       throw new Error(error.message);
     }
 
+    let aiReview = { reviewed: 0, failed: 0 };
+    try {
+      aiReview = await runAiVisaReview(serverEnv.AI_REVIEW_PER_SYNC);
+    } catch {
+      // The AI pass is best-effort; flagged jobs are retried on the next sync.
+    }
+
     await supabase
       .from("job_sync_runs")
       .update({
@@ -294,6 +327,7 @@ export async function POST(request: NextRequest) {
       syncedCount: data?.length ?? 0,
       fetchedCount: mappedJobs.length,
       source: ADZUNA_SOURCE,
+      visaAiReview: aiReview,
       jobs: data ?? [],
     });
   } catch (error) {

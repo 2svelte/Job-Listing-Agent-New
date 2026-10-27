@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { serverEnv } from "@/lib/server-env";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
+import { classifyVisaByRules } from "@/lib/visa/rules";
 
 const ADZUNA_API_BASE_URL = "https://api.adzuna.com/v1/api/jobs";
 const ADZUNA_SOURCE = "adzuna";
@@ -15,6 +16,7 @@ const searchBodySchema = z.object({
   salaryMin: z.number().int().nonnegative().optional(),
   fullTime: z.boolean().optional(),
   permanent: z.boolean().optional(),
+  excludeVisaRestricted: z.boolean().optional().default(false),
 });
 
 type AdzunaJob = {
@@ -86,17 +88,22 @@ type DbJob = {
   tags: string[] | null;
   category: string | null;
   posted_at: string | null;
+  visa_requirement: string | null;
 };
 
-const searchStoredJobs = async (what?: string, where?: string) => {
+const searchStoredJobs = async (what?: string, where?: string, excludeVisaRestricted = false) => {
   let query = getSupabaseAdminClient()
     .from("jobs")
     .select(
-      "id,source,source_job_id,source_url,title,company_name,description,location,remote_type,employment_type,salary_min,salary_max,currency,tags,category,posted_at",
+      "id,source,source_job_id,source_url,title,company_name,description,location,remote_type,employment_type,salary_min,salary_max,currency,tags,category,posted_at,visa_requirement",
     )
     .eq("is_active", true)
     .order("posted_at", { ascending: false, nullsFirst: false })
     .limit(100);
+
+  if (excludeVisaRestricted) {
+    query = query.neq("visa_requirement", "restricted");
+  }
 
   const titleTerms = termsOf(what);
   if (titleTerms.length) {
@@ -126,11 +133,11 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { pages, what, whatExclude, where, sortBy, salaryMin, fullTime, permanent } = parsed.data;
+  const { pages, what, whatExclude, where, sortBy, salaryMin, fullTime, permanent, excludeVisaRestricted } = parsed.data;
 
   let storedJobs: DbJob[] = [];
   try {
-    storedJobs = await searchStoredJobs(what, where);
+    storedJobs = await searchStoredJobs(what, where, excludeVisaRestricted);
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Failed to search stored jobs" },
@@ -232,8 +239,10 @@ export async function POST(request: NextRequest) {
         tags: buildTags(job),
         category: job.category?.label ?? null,
         posted_at: job.created ?? null,
+        visa_requirement: classifyVisaByRules(title, description).requirement,
       };
-    });
+    })
+      .filter((job) => !excludeVisaRestricted || job.visa_requirement !== "restricted");
 
     const seenUrls = new Set(storedJobs.map((job) => job.source_url));
     const liveOnly = jobs.filter((job) => !seenUrls.has(job.source_url));

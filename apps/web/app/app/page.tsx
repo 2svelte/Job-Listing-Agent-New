@@ -12,6 +12,7 @@ type Job = {
   company_name: string;
   location: string | null;
   source_url: string;
+  visa_requirement?: string | null;
 };
 
 type Recommendation = {
@@ -26,6 +27,7 @@ type LiveSearchJob = {
   company_name: string;
   location: string | null;
   source_url: string;
+  visa_requirement?: string | null;
 };
 
 const parseApiPayload = async <T extends object>(
@@ -55,6 +57,7 @@ export default function AppHomePage() {
   const [titleInput, setTitleInput] = useState("");
   const [locationInput, setLocationInput] = useState("");
   const [tagInput, setTagInput] = useState("");
+  const [excludeVisaRestricted, setExcludeVisaRestricted] = useState(false);
 
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [searchBusy, setSearchBusy] = useState(false);
@@ -73,6 +76,14 @@ export default function AppHomePage() {
       setEmail(user.email ?? "");
       setLoadingSession(false);
       setStatus("Session loaded.");
+
+      const prefResponse = await fetch(`/api/user/preferences?userId=${user.id}`);
+      const prefPayload = await parseApiPayload<{ preferences?: { exclude_visa_restricted?: boolean } | null }>(
+        prefResponse,
+      );
+      if (prefResponse.ok && prefPayload.preferences?.exclude_visa_restricted) {
+        setExcludeVisaRestricted(true);
+      }
     };
 
     void init();
@@ -152,6 +163,7 @@ export default function AppHomePage() {
         minSalary: 80000,
         maxSalary: 300000,
         preferredTags: splitInput(tagInput),
+        excludeVisaRestricted,
       }),
     });
 
@@ -177,6 +189,7 @@ export default function AppHomePage() {
         pages: 2,
         what: titles || undefined,
         where: locations || undefined,
+        excludeVisaRestricted,
       }),
     });
 
@@ -202,6 +215,7 @@ export default function AppHomePage() {
         company_name: job.company_name,
         location: job.location,
         source_url: job.source_url,
+        visa_requirement: job.visa_requirement,
       },
     }));
 
@@ -270,6 +284,14 @@ export default function AppHomePage() {
             <input value={tagInput} onChange={(event) => setTagInput(event.target.value)} />
           </label>
         </div>
+        <label className={styles.checkboxRow}>
+          <input
+            type="checkbox"
+            checked={excludeVisaRestricted}
+            onChange={(event) => setExcludeVisaRestricted(event.target.checked)}
+          />
+          Remove permanent visa / citizenship requirement
+        </label>
         <button disabled={searchBusy} onClick={searchJobs}>
           {searchBusy ? "Searching..." : "Search Jobs"}
         </button>
@@ -288,6 +310,9 @@ export default function AppHomePage() {
                   {item.job.company_name}
                   {item.job.location ? ` · ${item.job.location}` : ""}
                 </p>
+                {item.job.visa_requirement === "restricted" ? (
+                  <p className={styles.visaTag}>PR / citizens only</p>
+                ) : null}
                 <p className={styles.score}>Match score: {(item.score * 100).toFixed(1)}%</p>
                 <ul>
                   {item.reasons.slice(0, 3).map((reason) => (

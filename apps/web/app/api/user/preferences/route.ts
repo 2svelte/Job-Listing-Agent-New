@@ -10,6 +10,7 @@ const preferencesSchema = z.object({
   minSalary: z.number().int().nonnegative().nullable().default(null),
   maxSalary: z.number().int().nonnegative().nullable().default(null),
   preferredTags: z.array(z.string().min(1)).default([]),
+  excludeVisaRestricted: z.boolean().default(false),
 });
 
 const userParamsSchema = z.object({
@@ -69,6 +70,7 @@ export async function PUT(request: NextRequest) {
         min_salary: payload.minSalary,
         max_salary: payload.maxSalary,
         preferred_tags: payload.preferredTags,
+        exclude_visa_restricted: payload.excludeVisaRestricted,
         updated_at: new Date().toISOString(),
       },
       { onConflict: "user_id" },
