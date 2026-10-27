@@ -4,6 +4,7 @@ import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { serverEnv } from "@/lib/server-env";
 import { isAdminRequest } from "@/lib/admin-auth";
 import { runAiVisaReview, runFullTextReview, visaColumnsFromRules } from "@/lib/visa";
+import { DEFAULT_SYNC_PAGES, isMetroMelbourne, SYNC_LOCATION, SYNC_TITLES } from "@/lib/sync-targets";
 
 export const maxDuration = 300;
 
@@ -12,7 +13,7 @@ const ADZUNA_SOURCE = "adzuna";
 const SYNC_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 const syncBodySchema = z.object({
-  pages: z.number().int().positive().max(5).optional().default(1),
+  pages: z.number().int().positive().max(5).optional(),
   what: z.string().min(1).max(120).optional(),
   whatExclude: z.string().min(1).max(120).optional(),
   where: z.string().min(1).max(120).optional(),
@@ -102,7 +103,9 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { pages, what, whatExclude, where, sortBy, salaryMin, fullTime, permanent, force } = parsed.data;
+  const { what, whatExclude, where, sortBy, salaryMin, fullTime, permanent, force } = parsed.data;
+  const bodyHasPages = parsed.data.pages !== undefined;
+  const pages = parsed.data.pages ?? 1;
 
   const supabase = getSupabaseAdminClient();
 
@@ -167,65 +170,99 @@ export async function POST(request: NextRequest) {
 
   try {
     const adzunaJobs: AdzunaJob[] = [];
+    const seenIds = new Set<string>();
+    const searchErrors: string[] = [];
 
-    for (let page = 1; page <= pages; page += 1) {
-      const params = new URLSearchParams({
-        app_id: serverEnv.ADZUNA_APP_ID,
-        app_key: serverEnv.ADZUNA_APP_KEY,
-        results_per_page: String(serverEnv.ADZUNA_RESULTS_PER_PAGE),
-        "content-type": "application/json",
-      });
+    // A request with its own filters runs one search; otherwise run every target title in Melbourne.
+    const customSearch = Boolean(what || where);
+    const searches = customSearch
+      ? [{ what, titleOnly: false, where }]
+      : SYNC_TITLES.map((title) => ({ what: title, titleOnly: true, where: SYNC_LOCATION }));
+    const pagesPerSearch = customSearch ? pages : bodyHasPages ? pages : DEFAULT_SYNC_PAGES;
 
-      if (what) {
-        params.set("what", what);
+    for (const search of searches) {
+      try {
+        for (let page = 1; page <= pagesPerSearch; page += 1) {
+          const params = new URLSearchParams({
+            app_id: serverEnv.ADZUNA_APP_ID,
+            app_key: serverEnv.ADZUNA_APP_KEY,
+            results_per_page: String(serverEnv.ADZUNA_RESULTS_PER_PAGE),
+            "content-type": "application/json",
+          });
+
+          if (search.what) {
+            params.set(search.titleOnly ? "title_only" : "what", search.what);
+          }
+
+          if (search.where) {
+            params.set("where", search.where);
+          }
+
+          if (whatExclude) {
+            params.set("what_exclude", whatExclude);
+          }
+
+          params.set("sort_by", sortBy ?? (customSearch ? "relevance" : "date"));
+
+          if (typeof salaryMin === "number") {
+            params.set("salary_min", String(salaryMin));
+          }
+
+          if (fullTime) {
+            params.set("full_time", "1");
+          }
+
+          if (permanent) {
+            params.set("permanent", "1");
+          }
+
+          let response: Response | undefined;
+          for (let attempt = 0; attempt < 5; attempt += 1) {
+            response = await fetch(
+              `${ADZUNA_API_BASE_URL}/${serverEnv.ADZUNA_COUNTRY}/search/${page}?${params.toString()}`,
+              {
+                method: "GET",
+                headers: {
+                  Accept: "application/json",
+                },
+                cache: "no-store",
+              },
+            );
+
+            if (response.status < 500 && response.status !== 429) {
+              break;
+            }
+
+            await new Promise((resolve) => setTimeout(resolve, 1500 * (attempt + 1)));
+          }
+
+          if (!response?.ok) {
+            throw new Error(`Adzuna request failed with status ${response?.status}`);
+          }
+
+          const payload = (await response.json()) as AdzunaResponse;
+          const pageJobs = payload.results ?? [];
+          for (const job of pageJobs) {
+            const id = String(job.id);
+            if (!seenIds.has(id) && (customSearch || isMetroMelbourne(job.location?.area))) {
+              seenIds.add(id);
+              adzunaJobs.push(job);
+            }
+          }
+
+          if (!pageJobs.length) {
+            break;
+          }
+
+          await new Promise((resolve) => setTimeout(resolve, 300));
+        }
+      } catch (searchError) {
+        searchErrors.push(`${search.what ?? "all"}: ${searchError instanceof Error ? searchError.message : "failed"}`);
       }
+    }
 
-      if (where) {
-        params.set("where", where);
-      }
-
-      if (whatExclude) {
-        params.set("what_exclude", whatExclude);
-      }
-
-      if (sortBy) {
-        params.set("sort_by", sortBy);
-      }
-
-      if (typeof salaryMin === "number") {
-        params.set("salary_min", String(salaryMin));
-      }
-
-      if (fullTime) {
-        params.set("full_time", "1");
-      }
-
-      if (permanent) {
-        params.set("permanent", "1");
-      }
-
-      const response = await fetch(
-        `${ADZUNA_API_BASE_URL}/${serverEnv.ADZUNA_COUNTRY}/search/${page}?${params.toString()}`,
-        {
-          method: "GET",
-          headers: {
-            Accept: "application/json",
-          },
-          cache: "no-store",
-        },
-      );
-
-      if (!response.ok) {
-        throw new Error(`Adzuna request failed (page ${page}) with status ${response.status}`);
-      }
-
-      const payload = (await response.json()) as AdzunaResponse;
-      const pageJobs = payload.results ?? [];
-      adzunaJobs.push(...pageJobs);
-
-      if (!pageJobs.length) {
-        break;
-      }
+    if (searchErrors.length === searches.length) {
+      throw new Error(`All Adzuna searches failed. ${searchErrors[0]}`);
     }
 
     const mappedJobs = adzunaJobs.map((job) => {
@@ -338,6 +375,7 @@ export async function POST(request: NextRequest) {
       source: ADZUNA_SOURCE,
       visaAiReview: aiReview,
       visaFullText: fullText,
+      searchErrors,
       jobs: data ?? [],
     });
   } catch (error) {

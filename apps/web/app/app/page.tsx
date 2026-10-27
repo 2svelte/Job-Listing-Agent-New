@@ -6,6 +6,8 @@ import { useEffect, useMemo, useState } from "react";
 import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
 import styles from "../dashboard.module.css";
 
+const PAGE_SIZE = 20;
+
 type Job = {
   id: string;
   title: string;
@@ -59,7 +61,12 @@ export default function AppHomePage() {
   const [tagInput, setTagInput] = useState("");
   const [excludeVisaRestricted, setExcludeVisaRestricted] = useState(false);
 
-  const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
+  const [recommendations, setRecommendationsState] = useState<Recommendation[]>([]);
+  const [pageIndex, setPageIndex] = useState(0);
+  const setRecommendations = (items: Recommendation[]) => {
+    setRecommendationsState(items);
+    setPageIndex(0);
+  };
   const [searchBusy, setSearchBusy] = useState(false);
 
   useEffect(() => {
@@ -67,8 +74,7 @@ export default function AppHomePage() {
       const { data } = await supabase.auth.getSession();
       const user = data.session?.user;
       if (!user) {
-        setLoadingSession(false);
-        setStatus("Please log in to access your dashboard.");
+        router.replace("/login");
         return;
       }
 
@@ -87,7 +93,7 @@ export default function AppHomePage() {
     };
 
     void init();
-  }, [supabase]);
+  }, [supabase, router]);
 
   const splitInput = (value: string) =>
     value
@@ -225,6 +231,15 @@ export default function AppHomePage() {
     setSearchBusy(false);
   };
 
+  const totalPages = Math.max(1, Math.ceil(recommendations.length / PAGE_SIZE));
+  const currentPage = Math.min(pageIndex, totalPages - 1);
+  const visibleRecommendations = recommendations.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE);
+
+  const goToPage = (next: number) => {
+    setPageIndex(next);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
   const signOut = async () => {
     await supabase.auth.signOut();
     router.push("/login");
@@ -277,7 +292,11 @@ export default function AppHomePage() {
           </label>
           <label>
             Locations
-            <input value={locationInput} onChange={(event) => setLocationInput(event.target.value)} />
+            <input
+              placeholder="All"
+              value={locationInput}
+              onChange={(event) => setLocationInput(event.target.value)}
+            />
           </label>
           <label>
             Skills/tags
@@ -303,7 +322,7 @@ export default function AppHomePage() {
           <p>No recommendations yet. Save preferences or trigger job sync.</p>
         ) : (
           <div className={styles.cards}>
-            {recommendations.map((item) => (
+            {visibleRecommendations.map((item) => (
               <article className={styles.card} key={item.job.id}>
                 <h3>{item.job.title}</h3>
                 <p className={styles.cardMeta}>
@@ -331,6 +350,19 @@ export default function AppHomePage() {
             ))}
           </div>
         )}
+        {totalPages > 1 ? (
+          <nav className={styles.pagination} aria-label="Job results pages">
+            <button disabled={currentPage === 0} onClick={() => goToPage(currentPage - 1)}>
+              Previous
+            </button>
+            <span>
+              Page {currentPage + 1} of {totalPages} · {recommendations.length} jobs
+            </span>
+            <button disabled={currentPage >= totalPages - 1} onClick={() => goToPage(currentPage + 1)}>
+              Next
+            </button>
+          </nav>
+        ) : null}
       </section>
     </main>
   );

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { serverEnv } from "@/lib/server-env";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { classifyVisaByRules } from "@/lib/visa/rules";
+import { isMetroMelbourne, SYNC_LOCATION } from "@/lib/sync-targets";
 
 const ADZUNA_API_BASE_URL = "https://api.adzuna.com/v1/api/jobs";
 const ADZUNA_SOURCE = "adzuna";
@@ -133,11 +134,14 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { pages, what, whatExclude, where, sortBy, salaryMin, fullTime, permanent, excludeVisaRestricted } = parsed.data;
+  const { pages, what, whatExclude, sortBy, salaryMin, fullTime, permanent, excludeVisaRestricted } = parsed.data;
+  const userWhere = parsed.data.where?.trim() || undefined;
+  const where = userWhere ?? SYNC_LOCATION;
 
   let storedJobs: DbJob[] = [];
   try {
-    storedJobs = await searchStoredJobs(what, where, excludeVisaRestricted);
+    // Stored jobs are already metro Melbourne from the sync, so only an explicit location narrows them further.
+    storedJobs = await searchStoredJobs(what, userWhere, excludeVisaRestricted);
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Failed to search stored jobs" },
@@ -216,7 +220,9 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const jobs = adzunaJobs.map((job) => {
+    const jobs = adzunaJobs
+      .filter((job) => userWhere || isMetroMelbourne(job.location?.area))
+      .map((job) => {
       const sourceJobId = String(job.id);
       const location = job.location?.display_name ?? null;
       const description = job.description ?? "";
