@@ -4,12 +4,14 @@ import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { isAdminRequest } from "@/lib/admin-auth";
 import { AtsNotFoundError, fetchAtsJobs, toJobRow, type AtsProvider } from "@/lib/ats";
 
+export const maxDuration = 300;
+
 const STALE_AFTER_MS = 6 * 60 * 60 * 1000;
 const CONCURRENCY = 5;
 const UPSERT_CHUNK = 200;
 
 const bodySchema = z.object({
-  limit: z.number().int().positive().max(200).optional().default(25),
+  limit: z.number().int().positive().max(200).optional().default(100),
   force: z.boolean().optional().default(false),
   companyId: z.string().uuid().optional(),
 });
@@ -148,3 +150,5 @@ export async function POST(request: NextRequest) {
     results,
   });
 }
+
+export { POST as GET };

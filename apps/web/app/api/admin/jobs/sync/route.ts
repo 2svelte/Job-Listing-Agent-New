@@ -3,6 +3,9 @@ import { z } from "zod";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { serverEnv } from "@/lib/server-env";
 import { parseAtsUrl } from "@/lib/ats";
+import { isAdminRequest } from "@/lib/admin-auth";
+
+export const maxDuration = 300;
 
 const ADZUNA_API_BASE_URL = "https://api.adzuna.com/v1/api/jobs";
 const ADZUNA_SOURCE = "adzuna";
@@ -77,6 +80,10 @@ const buildTags = (job: AdzunaJob) => {
 };
 
 export async function POST(request: NextRequest) {
+  if (!(await isAdminRequest(request))) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
   if (!serverEnv.ADZUNA_APP_ID || !serverEnv.ADZUNA_APP_KEY) {
     return NextResponse.json(
       {
@@ -324,3 +331,5 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+export { POST as GET };

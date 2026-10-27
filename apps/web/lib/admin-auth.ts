@@ -1,4 +1,6 @@
+import { timingSafeEqual } from "node:crypto";
 import { NextRequest } from "next/server";
+import { serverEnv } from "@/lib/server-env";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
@@ -12,6 +14,16 @@ export const isAdminRequest = async (request: NextRequest) => {
   const token = authorization.startsWith("Bearer ") ? authorization.slice(7).trim() : "";
   if (!token) {
     return false;
+  }
+
+  // Scheduled jobs (Vercel Cron sends CRON_SECRET as a bearer token)
+  const cronSecret = serverEnv.CRON_SECRET;
+  if (cronSecret) {
+    const a = Buffer.from(token);
+    const b = Buffer.from(cronSecret);
+    if (a.length === b.length && timingSafeEqual(a, b)) {
+      return true;
+    }
   }
 
   const supabase = getSupabaseAdminClient();

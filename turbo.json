@@ -8,7 +8,10 @@
     "ADZUNA_APP_ID",
     "ADZUNA_APP_KEY",
     "ADZUNA_COUNTRY",
-    "ADZUNA_RESULTS_PER_PAGE"
+    "ADZUNA_RESULTS_PER_PAGE",
+    "CRON_SECRET",
+    "SERPAPI_KEY",
+    "SERPAPI_MONTHLY_LIMIT"
   ],
   "tasks": {
     "build": {

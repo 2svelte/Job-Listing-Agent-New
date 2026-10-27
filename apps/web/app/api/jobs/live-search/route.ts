@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { serverEnv } from "@/lib/server-env";
+import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 
 const ADZUNA_API_BASE_URL = "https://api.adzuna.com/v1/api/jobs";
 const ADZUNA_SOURCE = "adzuna";
@@ -61,16 +62,61 @@ const buildTags = (job: AdzunaJob) => {
   return Array.from(tags);
 };
 
-export async function POST(request: NextRequest) {
-  if (!serverEnv.ADZUNA_APP_ID || !serverEnv.ADZUNA_APP_KEY) {
-    return NextResponse.json(
-      {
-        error: "Adzuna is not configured. Set ADZUNA_APP_ID and ADZUNA_APP_KEY in apps/web/.env.local",
-      },
-      { status: 500 },
-    );
+const termsOf = (value?: string) =>
+  (value ?? "")
+    .split(",")
+    // strip characters that have meaning inside PostgREST filter strings
+    .map((term) => term.replace(/[,()%*\\]/g, " ").trim())
+    .filter(Boolean);
+
+type DbJob = {
+  id: string;
+  source: string;
+  source_job_id: string;
+  source_url: string;
+  title: string;
+  company_name: string;
+  description: string | null;
+  location: string | null;
+  remote_type: string | null;
+  employment_type: string | null;
+  salary_min: number | null;
+  salary_max: number | null;
+  currency: string | null;
+  tags: string[] | null;
+  category: string | null;
+  posted_at: string | null;
+};
+
+const searchStoredJobs = async (what?: string, where?: string) => {
+  let query = getSupabaseAdminClient()
+    .from("jobs")
+    .select(
+      "id,source,source_job_id,source_url,title,company_name,description,location,remote_type,employment_type,salary_min,salary_max,currency,tags,category,posted_at",
+    )
+    .eq("is_active", true)
+    .order("posted_at", { ascending: false, nullsFirst: false })
+    .limit(100);
+
+  const titleTerms = termsOf(what);
+  if (titleTerms.length) {
+    query = query.or(titleTerms.flatMap((t) => [`title.ilike.%${t}%`, `company_name.ilike.%${t}%`]).join(","));
   }
 
+  const locationTerms = termsOf(where);
+  if (locationTerms.length) {
+    query = query.or(locationTerms.map((t) => `location.ilike.%${t}%`).join(","));
+  }
+
+  const { data, error } = await query;
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return (data ?? []) as unknown as DbJob[];
+};
+
+export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => ({}));
   const parsed = searchBodySchema.safeParse(body);
   if (!parsed.success) {
@@ -81,6 +127,24 @@ export async function POST(request: NextRequest) {
   }
 
   const { pages, what, whatExclude, where, sortBy, salaryMin, fullTime, permanent } = parsed.data;
+
+  let storedJobs: DbJob[] = [];
+  try {
+    storedJobs = await searchStoredJobs(what, where);
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Failed to search stored jobs" },
+      { status: 500 },
+    );
+  }
+
+  if (!serverEnv.ADZUNA_APP_ID || !serverEnv.ADZUNA_APP_KEY) {
+    return NextResponse.json({
+      source: "database",
+      fetchedCount: storedJobs.length,
+      jobs: storedJobs,
+    });
+  }
 
   try {
     const adzunaJobs: AdzunaJob[] = [];
@@ -171,12 +235,21 @@ export async function POST(request: NextRequest) {
       };
     });
 
+    const seenUrls = new Set(storedJobs.map((job) => job.source_url));
+    const liveOnly = jobs.filter((job) => !seenUrls.has(job.source_url));
+    const merged = [...storedJobs, ...liveOnly];
+
     return NextResponse.json({
-      source: ADZUNA_SOURCE,
-      fetchedCount: jobs.length,
-      jobs,
+      source: "database+adzuna",
+      fetchedCount: merged.length,
+      jobs: merged,
     });
   } catch (error) {
+    // Adzuna failing should not hide the jobs we already have stored
+    if (storedJobs.length) {
+      return NextResponse.json({ source: "database", fetchedCount: storedJobs.length, jobs: storedJobs });
+    }
+
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Failed to fetch jobs from Adzuna" },
       { status: 500 },

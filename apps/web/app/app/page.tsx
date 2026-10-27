@@ -277,9 +277,6 @@ export default function AppHomePage() {
 
       <section className={styles.results}>
         <h2>Recommended Jobs</h2>
-        <p className={styles.attribution}>
-          Jobs by <a href="https://www.adzuna.com.au" target="_blank" rel="noreferrer">Adzuna</a>
-        </p>
         {recommendations.length === 0 ? (
           <p>No recommendations yet. Save preferences or trigger job sync.</p>
         ) : (

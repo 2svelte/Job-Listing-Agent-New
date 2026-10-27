@@ -67,17 +67,6 @@
   gap: 0.7rem;
 }
 
-.attribution {
-  color: #425454;
-  font-size: 0.9rem;
-}
-
-.attribution a {
-  font-weight: 700;
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-
 .card {
   border: 1px solid var(--border);
   background: var(--surface-strong);
